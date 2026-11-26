@@ -4,9 +4,9 @@
 import time
 from ttboard.demoboard import DemoBoard
 
-K, THR = 2, 6
-W = [[0] * 4 for _ in range(8)]          # W[i][n], -4..3
-W[0] = [3, 0, 0, -1]; W[1] = [2, 1, 0, 0]; W[2] = [0, 3, 2, 0]
+K, THR = 2, 4
+W = [[0] * 4 for _ in range(8)]          # W[i][n], -2..+1
+W[0] = [1, 0, 0, -1]; W[1] = [1, 1, 0, 0]; W[2] = [0, 1, 1, 0]
 
 CFG_EN, CFG_CLK, CFG_DATA, STEP, DENSE = 0, 1, 2, 3, 4   # uio bit numbers
 tt = DemoBoard.get()
@@ -25,7 +25,7 @@ def bits():
         for i in range(w - 1, -1, -1): b.append((v >> i) & 1)
     push(K, 3); push(THR, 8)
     for i in range(8):
-        for n in range(4): push(W[i][n] & 7, 3)
+        for n in range(4): push(W[i][n] & 3, 2)
     return b
 
 def configure():

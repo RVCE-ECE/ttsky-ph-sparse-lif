@@ -18,9 +18,7 @@ module control_fsm (
     output wire       v_wr,       // write a membrane potential
     output wire       v_zero,     // ... with zero (fire/reset) instead of ALU result
     output wire       out_we,     // FIRE cycle: update output flop n
-    output wire       s_inc,      // count one input spike
-    output wire       osum_inc,   // count one output spike
-    output wire       done        // last cycle of the timestep
+    output wire       s_inc       // count one input spike
 );
   localparam S_IDLE = 3'd0, S_LATCH = 3'd1, S_LEAK = 3'd2, S_INT = 3'd3, S_FIRE = 3'd4;
 
@@ -75,6 +73,4 @@ module control_fsm (
   assign v_zero   = st_fire;
   assign out_we   = st_fire & en;
   assign s_inc    = st_int & cur_spiked & (n_r == 2'd0) & en;
-  assign osum_inc = st_fire & fire_cond & en;
-  assign done     = st_fire & n_is_3 & en;
 endmodule

@@ -1,5 +1,5 @@
-// config_store.v - 107-bit config shift register = K, THR and the 32 weights ("the program").
-// Frame, MSB first: K[2:0], THR[7:0], W[0][0] .. W[7][3] (3 bits each).
+// config_store.v - 75-bit config shift register = K, THR and the 32 weights ("the program").
+// Frame, MSB first: K[2:0], THR[7:0], W[0][0] .. W[7][3] (2 bits each, two's complement -2..+1).
 `default_nettype none
 module config_store (
     input  wire        clk,
@@ -9,7 +9,7 @@ module config_store (
     input  wire        cfg_data,
     output reg  [2:0]  kreg,    // leak shift
     output reg  [7:0]  thr,     // firing threshold
-    output reg  [95:0] wts      // W[0][0] in the top bits (not reset: loaded by config)
+    output reg  [63:0] wts      // W[0][0] in the top bits (not reset: loaded by config)
 );
   always @(posedge clk) begin
     if (!rst_n) begin

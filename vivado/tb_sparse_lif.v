@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-// Self-checking testbench for tt_um_sparse_lif (Vivado xsim / any Verilog-2001+ simulator).
+// Self-checking testbench for tt_um_pranavhegdee_sparse_lif (Vivado xsim / any Verilog-2001+ simulator).
 // Contains its own behavioural reference model, so no Python/cocotb is needed.
 module tb_sparse_lif;
 
@@ -18,16 +18,15 @@ module tb_sparse_lif;
   // ---------------- reference model state ----------------
   reg [2:0]  m_k;
   reg [7:0]  m_thr;
-  reg [95:0] m_w;                             // W[0][0] in the top bits (same as frame order)
+  reg [63:0] m_w;                             // W[0][0] in the top bits (same as frame order)
   reg [7:0]  m_v [0:3];
-  integer    m_osum;
   integer    errors = 0, checks = 0, seed = 32'h1234_5678;
 
   function integer wt(input integer i, input integer n);
-    reg [2:0] b;
+    reg [1:0] b;
     begin
-      b  = m_w[(31 - (i * 4 + n)) * 3 +: 3];
-      wt = b[2] ? (b - 8) : b;                // 3-bit two's complement -> integer
+      b  = m_w[(31 - (i * 4 + n)) * 2 +: 2];
+      wt = b[1] ? (b - 4) : b;                // 2-bit two's complement -> integer
     end
   endfunction
 
@@ -51,7 +50,6 @@ module tb_sparse_lif;
       for (n = 0; n < 4; n = n + 1)
         if (m_v[n] >= m_thr) begin
           m_out[n] = 1; m_v[n] = 0;
-          if (m_osum < 15) m_osum = m_osum + 1;
         end
       m_cyc = dn ? 41 : 9 + 4 * m_S;
     end
@@ -67,16 +65,16 @@ module tb_sparse_lif;
     end
   endtask
 
-  task configure(input [2:0] k, input [7:0] thr, input [95:0] w);
+  task configure(input [2:0] k, input [7:0] thr, input [63:0] w);
     integer b;
-    reg [106:0] frame;
+    reg [74:0] frame;
     integer n;
     begin
       frame = {k, thr, w};
-      m_k = k; m_thr = thr; m_w = w; m_osum = 0;
+      m_k = k; m_thr = thr; m_w = w;
       for (n = 0; n < 4; n = n + 1) m_v[n] = 0;
       uio_in[CFG_EN] = 1; wait_clk(4);
-      for (b = 106; b >= 0; b = b - 1) begin
+      for (b = 74; b >= 0; b = b - 1) begin
         uio_in[CFG_DATA] = frame[b]; wait_clk(4);
         uio_in[CFG_CLK]  = 1;        wait_clk(4);
         uio_in[CFG_CLK]  = 0;        wait_clk(4);
@@ -109,10 +107,10 @@ module tb_sparse_lif;
       cyc = {hi[1:0], lo};
       model_step(sp, dn);
       checks = checks + 1;
-      if (out !== m_out || cyc !== m_cyc || s !== m_S || tot !== m_osum) begin
+      if (out !== m_out || cyc !== m_cyc || s !== m_S || tot !== (m_out[0] + m_out[1] + m_out[2] + m_out[3])) begin
         errors = errors + 1;
         $display("MISMATCH t=%0t sp=%b dense=%b | DUT out=%b cyc=%0d S=%0d tot=%0d | MODEL out=%b cyc=%0d S=%0d tot=%0d",
-                 $time, sp, dn, out, cyc, s, tot, m_out, m_cyc, m_S, m_osum);
+                 $time, sp, dn, out, cyc, s, tot, m_out, m_cyc, m_S, (m_out[0] + m_out[1] + m_out[2] + m_out[3]));
       end
       last_cycles = cyc;
     end
@@ -120,23 +118,22 @@ module tb_sparse_lif;
 
   // ---------------- test sequence ----------------
   integer t, trial, S, cs, cd;
-  reg [95:0] rw;
+  reg [63:0] rw;
   reg [7:0]  rsp;
   integer    rk, rthr, i;
-  reg [95:0] wex;
+  reg [63:0] wex;
 
   initial begin
     $dumpfile("tb_sparse_lif.vcd"); $dumpvars(0, tb_sparse_lif);
     do_reset;
 
-    // ---- Test 1: worked example from the notes (K=2, THR=6) ----
-    // W[0]={+3,0,0,-1} W[1]={+2,+1,0,0} W[2]={0,+3,+2,0}
-    wex = 96'd0;
-    // 3-bit two's complement, index j=i*4+n, stored at bits [(31-j)*3 +: 3]
-    wex[(31-0)*3  +: 3] = 3'd3;  wex[(31-3)*3  +: 3] = 3'b111;   // W[0][0]=+3, W[0][3]=-1
-    wex[(31-4)*3  +: 3] = 3'd2;  wex[(31-5)*3  +: 3] = 3'd1;     // W[1][0]=+2, W[1][1]=+1
-    wex[(31-9)*3  +: 3] = 3'd3;  wex[(31-10)*3 +: 3] = 3'd2;     // W[2][1]=+3, W[2][2]=+2
-    configure(3'd2, 8'd6, wex);
+    // ---- Test 1: worked example (K=2, THR=4) ----
+    // W[0]={+1,0,0,-1} W[1]={+1,+1,0,0} W[2]={0,+1,+1,0}; 2-bit two's complement, index j=i*4+n at bits [(31-j)*2 +: 2]
+    wex = 64'd0;
+    wex[(31-0)*2  +: 2] = 2'd1;  wex[(31-3)*2  +: 2] = 2'b11;    // W[0][0]=+1, W[0][3]=-1
+    wex[(31-4)*2  +: 2] = 2'd1;  wex[(31-5)*2  +: 2] = 2'd1;     // W[1][0]=+1, W[1][1]=+1
+    wex[(31-9)*2  +: 2] = 2'd1;  wex[(31-10)*2 +: 2] = 2'd1;     // W[2][1]=+1, W[2][2]=+1
+    configure(3'd2, 8'd4, wex);
     step(8'b011, 0); $display("worked ex step1: out=%b cycles=%0d (expect 0000, 17)", uo_out[3:0], last_cycles);
     step(8'b011, 0); $display("worked ex step2: out=%b cycles=%0d (expect 0001, 17)", uo_out[3:0], last_cycles);
     step(8'b000, 0); $display("worked ex step3: out=%b cycles=%0d (expect 0000, 9)",  uo_out[3:0], last_cycles);
@@ -145,7 +142,7 @@ module tb_sparse_lif;
 
     // ---- Test 2: cycles vs sparsity table ----
     rw = 0;
-    for (i = 0; i < 32; i = i + 1) rw[i*3 +: 3] = $random(seed);
+    for (i = 0; i < 32; i = i + 1) rw[i*2 +: 2] = $random(seed);
     configure(3'd3, 8'd20, rw);
     $display("\n  S | sparse | dense");
     for (S = 0; S < 9; S = S + 1) begin
@@ -157,9 +154,9 @@ module tb_sparse_lif;
 
     // ---- Test 3: random configs and spike trains, sparse and dense ----
     for (trial = 0; trial < 25; trial = trial + 1) begin
-      for (i = 0; i < 32; i = i + 1) rw[i*3 +: 3] = $random(seed);
+      for (i = 0; i < 32; i = i + 1) rw[i*2 +: 2] = $random(seed);
       rk   = $random(seed) & 7;
-      rthr = 1 + (($random(seed) & 32'h7FFF_FFFF) % 60);
+      rthr = 1 + (($random(seed) & 32'h7FFF_FFFF) % 30);
       configure(rk[2:0], rthr[7:0], rw);
       for (t = 0; t < 60; t = t + 1) begin
         rsp = $random(seed);

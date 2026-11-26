@@ -91,15 +91,15 @@ async def test_worked_example(dut):
     """The hand-worked example from the design notes."""
     h = await start(dut)
     w = [[0] * 4 for _ in range(8)]
-    w[0], w[1], w[2] = [3, 0, 0, -1], [2, 1, 0, 0], [0, 3, 2, 0]
-    m = SparseLIF(k=2, thr=6, weights=w)
+    w[0], w[1], w[2] = [1, 0, 0, -1], [1, 1, 0, 0], [0, 1, 1, 0]
+    m = SparseLIF(k=2, thr=4, weights=w)
     await h.configure(m)
     expect = [(0b0000, 17), (0b0001, 17), (0b0000, 9), (0b0000, 13), (0b0010, 13)]
     for sp, (eo, ec) in zip((0b11, 0b11, 0, 0b100, 0b100), expect):
         out, cyc, S, tot = await h.step(sp, 0)
         mo, mc, mS = m.step(sp)
         assert (out, cyc) == (eo, ec) == (mo, mc), (out, cyc, eo, ec)
-        assert S == mS and tot == m.out_total
+        assert S == mS and tot == bin(mo).count('1')
 
 
 @cocotb.test()
@@ -123,7 +123,7 @@ async def test_random_vs_model(dut):
     h = await start(dut)
     rng = random.Random(2024)
     for trial in range(5 if GATE_LEVEL else 25):
-        m = SparseLIF(k=rng.randint(0, 7), thr=rng.randint(1, 60),
+        m = SparseLIF(k=rng.randint(0, 7), thr=rng.randint(1, 30),
                       weights=SparseLIF.random_weights(rng))
         await h.configure(m)
         for t in range(60):
@@ -131,8 +131,8 @@ async def test_random_vs_model(dut):
             sp = rng.getrandbits(8) & rng.getrandbits(8) if rng.random() < .7 else rng.getrandbits(8)
             out, cyc, S, tot = await h.step(sp, int(dense))
             mo, mc, mS = m.step(sp, dense)
-            assert (out, cyc, S, tot) == (mo, mc, mS, m.out_total), \
-                f"trial {trial} t {t} sp={sp:08b} dense={dense} rtl={(out,cyc,S,tot)} model={(mo,mc,mS,m.out_total)}"
+            assert (out, cyc, S, tot) == (mo, mc, mS, bin(mo).count('1')), \
+                f"trial {trial} t {t} sp={sp:08b} dense={dense} rtl={(out,cyc,S,tot)} model={(mo,mc,mS,bin(mo).count('1'))}"
 
 
 @cocotb.test()

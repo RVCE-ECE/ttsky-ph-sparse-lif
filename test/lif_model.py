@@ -3,7 +3,7 @@
 Rules (must match src/project.v exactly):
   * V is an unsigned 8-bit value per neuron, saturating at 0 and 255.
   * LEAK      : V = V - (V >> K)           (K = 0..7)
-  * INTEGRATE : for every input i that spiked, V[n] += W[i][n]   (W signed 3-bit, -4..3)
+  * INTEGRATE : for every input i that spiked, V[n] += W[i][n]   (W signed 2-bit, -2..+1)
                 inputs are visited lowest index first (order matters only through saturation).
   * FIRE      : if V >= THR: out=1 and V=0, else out=0
   * cycles    : sparse = 9 + 4*S ; dense = 41
@@ -25,10 +25,9 @@ class SparseLIF:
 
     def reset(self):
         self.v = [0] * self.N_NEU
-        self.out_total = 0          # saturating (max 15) output spike counter
 
     def frame_bits(self):
-        """Config frame, MSB first: K(3) THR(8) W[0][0]..W[7][3] (3 bits each) = 107 bits."""
+        """Config frame, MSB first: K(3) THR(8) W[0][0]..W[7][3] (2 bits each) = 75 bits."""
         bits = []
 
         def push(val, width):
@@ -39,8 +38,8 @@ class SparseLIF:
         push(self.thr, 8)
         for i in range(self.N_IN):
             for n in range(self.N_NEU):
-                push(self.w[i][n] & 7, 3)
-        assert len(bits) == 107
+                push(self.w[i][n] & 3, 2)
+        assert len(bits) == 75
         return bits
 
     def step(self, spikes, dense=False):
@@ -57,21 +56,20 @@ class SparseLIF:
             if self.v[n] >= self.thr:
                 out |= 1 << n
                 self.v[n] = 0
-                self.out_total = min(15, self.out_total + 1)
         cycles = 41 if dense else 9 + 4 * S
         return out, cycles, S
 
     @staticmethod
     def random_weights(rng=random):
-        return [[rng.randint(-4, 3) for _ in range(4)] for _ in range(8)]
+        return [[rng.randint(-2, 1) for _ in range(4)] for _ in range(8)]
 
 
 if __name__ == "__main__":
     w = [[0] * 4 for _ in range(8)]
-    w[0] = [3, 0, 0, -1]
-    w[1] = [2, 1, 0, 0]
-    w[2] = [0, 3, 2, 0]
-    m = SparseLIF(k=2, thr=6, weights=w)
+    w[0] = [1, 0, 0, -1]
+    w[1] = [1, 1, 0, 0]
+    w[2] = [0, 1, 1, 0]
+    m = SparseLIF(k=2, thr=4, weights=w)
     for sp in (0b011, 0b011, 0, 0b100, 0b100):
         out, cyc, S = m.step(sp)
         print(f"spikes={sp:08b} out={out:04b} V={m.v} cycles={cyc}")
