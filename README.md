@@ -13,7 +13,7 @@ The chip reports its own cycle count, so the speed-up is measurable on silicon.
 info.yaml            Tiny Tapeout project config (top module, pinout, tiles)
 src/project.v        TOP module tt_um_pranavhegdee_sparse_lif (wires the blocks together)
 src/input_sync.v     2-flop synchronisers + edge detect (CFG_CLK, STEP)
-src/config_store.v   107-bit config shift register: K, THR, 32 weights
+src/config_store.v   75-bit config shift register: K, THR, 32 weights
 src/weight_mux.v     selects W[input][neuron] from the weight store
 src/prio_encoder.v   lowest-pending-input encoder
 src/spike_latch.v    spike snapshot + pending mask (sparse/dense)
