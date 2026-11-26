@@ -11,7 +11,7 @@ The chip reports its own cycle count, so the speed-up is measurable on silicon.
 ## Layout
 ```
 info.yaml            Tiny Tapeout project config (top module, pinout, tiles)
-src/project.v        TOP module tt_um_sparse_lif (wires the blocks together)
+src/project.v        TOP module tt_um_pranavhegdee_sparse_lif (wires the blocks together)
 src/input_sync.v     2-flop synchronisers + edge detect (CFG_CLK, STEP)
 src/config_store.v   107-bit config shift register: K, THR, 32 weights
 src/weight_mux.v     selects W[input][neuron] from the weight store
