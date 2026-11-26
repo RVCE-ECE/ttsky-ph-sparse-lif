@@ -1,42 +1,41 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Verilog Project Template
+# Sparse Event-Driven LIF Neurons - Tiny Tapeout
 
-- [Read the documentation for project](docs/info.md)
+4 leaky integrate-and-fire neurons, 8 spike inputs, one shared saturating adder.
+**Sparse mode** only processes inputs that spiked (`9 + 4*S` cycles); **dense mode** always takes 41.
+The chip reports its own cycle count, so the speed-up is measurable on silicon.
 
-## What is Tiny Tapeout?
+- [Datasheet / usage](docs/info.md)
 
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
+## Layout
+```
+info.yaml            Tiny Tapeout project config (top module, pinout, tiles)
+src/project.v        TOP module tt_um_sparse_lif (wires the blocks together)
+src/input_sync.v     2-flop synchronisers + edge detect (CFG_CLK, STEP)
+src/config_store.v   107-bit config shift register: K, THR, 32 weights
+src/weight_mux.v     selects W[input][neuron] from the weight store
+src/prio_encoder.v   lowest-pending-input encoder
+src/spike_latch.v    spike snapshot + pending mask (sparse/dense)
+src/membrane_file.v  4 x 8-bit membrane potentials
+src/neuron_alu.v     the ONE shared saturating adder (leak + integrate)
+src/threshold_cmp.v  comparator V >= THR
+src/control_fsm.v    IDLE/LATCH/LEAK/INT/FIRE sequencer + neuron counter
+src/output_reg.v     4 output spike flops
+src/diag_counters.v  cycle counter, S counter, output-spike counter, diag mux
+src/config.json      default LibreLane config (untouched)
+test/tb.v            cocotb wrapper testbench
+test/test.py         cocotb tests (RTL vs bit-exact model; also run at gate level by CI)
+test/lif_model.py    Python reference model ("answer key")
+test/Makefile        cocotb + Icarus
+docs/info.md         datasheet text
+board/measure.py     RP2040 measurement script (cycles vs S)
+board/plot.py        plot cycles vs sparsity
+vivado/              plain-Verilog self-checking testbench for Vivado xsim
+.github/workflows/   CI: test, gds (+precheck, gate-level test), docs, fpga
+```
 
-To learn more and get started, visit https://tinytapeout.com.
-
-## Set up your Verilog project
-
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
-
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
-
-## Enable GitHub actions to build the results page
-
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
-
-## Resources
-
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
-
-## What next?
-
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)
+## Run locally
+```
+cd test && make clean && make && python -m cocotb_tools.check_results results.xml
+```

@@ -1,27 +1,94 @@
 /*
- * Copyright (c) 2024 Your Name
- * SPDX-License-Identifier: Apache-2.0
+ * project.v - TOP MODULE: Sparse event-driven LIF neuron core (Tiny Tapeout)
+ *
+ * 8 spike inputs, 4 leaky integrate-and-fire neurons, ONE shared adder.
+ * Sparse mode visits only inputs that spiked: cycles = 9 + 4*S.  Dense mode: 41.
+ *
+ * Pin map
+ *   ui_in[7:0]   spike inputs (hold stable from before STEP until BUSY falls)
+ *   uo_out[3:0]  neuron spikes of the last timestep
+ *   uo_out[7:4]  diagnostic nibble selected by RD_SEL
+ *   uio[0] CFG_EN  | uio[1] CFG_CLK | uio[2] CFG_DATA | uio[3] STEP | uio[4] DENSE
+ *   uio[5] RD_SEL[0] | uio[6] RD_SEL[1] | uio[7] BUSY (output)
+ *   RD_SEL: 00 cycles[3:0] | 01 cycles[5:4] | 10 S | 11 cumulative output spikes (sat 15)
+ *
+ * Sub-modules (one file each, all in src/):
+ *   input_sync, config_store, weight_mux, prio_encoder, spike_latch, membrane_file,
+ *   neuron_alu, threshold_cmp, control_fsm, output_reg, diag_counters
  */
-
 `default_nettype none
 
-module tt_um_example (
-    input  wire [7:0] ui_in,    // Dedicated inputs
-    output wire [7:0] uo_out,   // Dedicated outputs
-    input  wire [7:0] uio_in,   // IOs: Input path
-    output wire [7:0] uio_out,  // IOs: Output path
-    output wire [7:0] uio_oe,   // IOs: Enable path (active high: 0=input, 1=output)
-    input  wire       ena,      // always 1 when the design is powered, so you can ignore it
-    input  wire       clk,      // clock
-    input  wire       rst_n     // reset_n - low to reset
+module tt_um_pranavhegdee_sparse_lif (
+    input  wire [7:0] ui_in,
+    output wire [7:0] uo_out,
+    input  wire [7:0] uio_in,
+    output wire [7:0] uio_out,
+    output wire [7:0] uio_oe,
+    input  wire       ena,
+    input  wire       clk,
+    input  wire       rst_n
 );
+  // ---- pin decode ----
+  wire       dense  = uio_in[4];
+  wire [1:0] rd_sel = uio_in[6:5];
 
-  // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out  = ui_in + uio_in;  // Example: ou_out is the sum of ui_in and uio_in
-  assign uio_out = 0;
-  assign uio_oe  = 0;
+  // ---- internal wires ----
+  wire        cfg_en, cfg_data, cfg_rise, step_rise;
+  wire [2:0]  kreg;
+  wire [7:0]  thr;
+  wire [95:0] wts;
+  wire [2:0]  cur_i, w3;
+  wire        cur_spiked, any_pending, last_pending;
+  wire [1:0]  n;
+  wire        st_idle, is_leak, load, retire, v_wr, v_zero, out_we, s_inc, osum_inc, done;
+  wire [7:0]  vn, alu_out;
+  wire        fire_cond;
+  wire [3:0]  out_spikes, diag;
 
-  // List all unused inputs to prevent warnings
-  wire _unused = &{ena, clk, rst_n, 1'b0};
+  input_sync u_sync (
+      .clk(clk), .rst_n(rst_n),
+      .cfg_en_in(uio_in[0]), .cfg_clk_in(uio_in[1]), .cfg_data_in(uio_in[2]), .step_in(uio_in[3]),
+      .cfg_en(cfg_en), .cfg_data(cfg_data), .cfg_rise(cfg_rise), .step_rise(step_rise));
 
+  config_store u_cfg (
+      .clk(clk), .rst_n(rst_n), .cfg_en(cfg_en), .cfg_rise(cfg_rise), .cfg_data(cfg_data),
+      .kreg(kreg), .thr(thr), .wts(wts));
+
+  control_fsm u_fsm (
+      .clk(clk), .rst_n(rst_n), .cfg_en(cfg_en), .step_rise(step_rise),
+      .any_pending(any_pending), .last_pending(last_pending),
+      .cur_spiked(cur_spiked), .fire_cond(fire_cond),
+      .n(n), .st_idle(st_idle), .is_leak(is_leak), .load(load), .retire(retire),
+      .v_wr(v_wr), .v_zero(v_zero), .out_we(out_we), .s_inc(s_inc),
+      .osum_inc(osum_inc), .done(done));
+
+  spike_latch u_spk (
+      .clk(clk), .rst_n(rst_n), .load(load), .retire(retire), .dense(dense), .ui_in(ui_in),
+      .cur_i(cur_i), .cur_spiked(cur_spiked), .any_pending(any_pending), .last_pending(last_pending));
+
+  weight_mux u_wmux (.wts(wts), .in_idx(cur_i), .n(n), .w3(w3));
+
+  membrane_file u_mem (
+      .clk(clk), .rst_n(rst_n), .clr(cfg_en), .wr_en(v_wr), .n(n),
+      .wdata(v_zero ? 8'd0 : alu_out), .vn(vn));
+
+  neuron_alu u_alu (.vn(vn), .kreg(kreg), .w3(w3), .is_leak(is_leak), .result(alu_out));
+
+  threshold_cmp u_cmp (.vn(vn), .thr(thr), .fire(fire_cond));
+
+  output_reg u_out (
+      .clk(clk), .rst_n(rst_n), .clr(cfg_en), .we(out_we), .n(n), .bitval(fire_cond),
+      .out(out_spikes));
+
+  diag_counters u_diag (
+      .clk(clk), .rst_n(rst_n), .clr(cfg_en), .st_idle(st_idle), .s_clear(load),
+      .s_inc(s_inc), .osum_inc(osum_inc), .done(done), .rd_sel(rd_sel), .diag(diag));
+
+  // ---- outputs ----
+  wire busy = ~st_idle | step_rise;
+  assign uo_out  = {diag, out_spikes};
+  assign uio_out = {busy, 7'b0};
+  assign uio_oe  = 8'b1000_0000;
+
+  wire _unused = &{ena, uio_in[7], 1'b0};
 endmodule
